@@ -1,0 +1,33 @@
+AWSTemplateFormatVersion: "2010-09-09"
+
+Description: Tiny test template.
+
+Parameters:
+
+  ShowMeTheid:
+    Type: String
+
+Resources:
+
+  DummySgForceCloudformationRefresh130:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      GroupDescription: Dummy security group to force cloudformation template refresh
+      GroupName: dummy-temp-sg144
+      VpcId: vpc-016cd89f1bd535a5f # dev
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 1234
+          ToPort: 1234
+          CidrIp: 1.2.3.4/0
+      Tags:
+        - 
+          Key: Name
+          Value: dummy-temp-sg144
+
+Outputs:
+  AdminRoleArn:
+    Description: Show me the user id
+    Value: !Ref ShowMeTheid
+    Export:
+      Name: AdminIdPassed

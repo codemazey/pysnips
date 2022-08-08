@@ -1,0 +1,156 @@
+AWSTemplateFormatVersion: "2010-09-09"
+
+Description: Tiny test template.
+
+Parameters:
+
+  Environment:
+    Type: String
+    AllowedValues:
+      - sandbox
+      - dev
+      - test
+      - preprod
+      - prod
+    Description: The environment tag is used to designate the Environment Stage of the associated AWS resource.
+    Default: dev # <<<----- NB HARD-WIRED
+
+Conditions:
+  IsPreProdEnvironment: !Equals
+    - Ref: Environment
+    - preprod
+
+  IsProdEnvironment: !Equals
+    - Ref: Environment
+    - prod
+
+Resources:
+  GetIAMRoleIdLambda:
+    Type: "AWS::Lambda::Function"
+    Properties:
+      Code:
+        ZipFile: |
+          import logging
+          import urllib
+          import boto3
+          import json
+          
+          logger = logging.getLogger()
+          logger.setLevel(logging.INFO)
+          
+          SUCCESS = "SUCCESS"
+          FAILED = "FAILED"
+          
+          def send(event, context, responseStatus, responseData, physicalResourceId=None, noEcho=False):
+              responseUrl = event['ResponseURL']
+          
+              print(responseUrl)
+          
+              responseBody = {}
+              responseBody['Status'] = responseStatus
+              responseBody['Reason'] = 'See the details in CloudWatch Log Stream: ' + context.log_stream_name
+              responseBody['PhysicalResourceId'] = physicalResourceId or context.log_stream_name
+              responseBody['StackId'] = event['StackId']
+              responseBody['RequestId'] = event['RequestId']
+              responseBody['LogicalResourceId'] = event['LogicalResourceId']
+              responseBody['NoEcho'] = noEcho
+              responseBody['Data'] = responseData
+          
+              json_responseBody = json.dumps(responseBody)
+          
+              print("Response body:\n" + json_responseBody)
+          
+              headers = {
+                  'content-type' : '',
+                  'content-length' : str(len(json_responseBody))
+              }
+          
+              try:
+                  req = urllib.request.Request(responseUrl, data=json_responseBody.encode(), headers=headers, method='PUT')
+                  urllib.request.urlopen(req)
+              except Exception as e:
+                  print("send(..) failed executing urllib.request.Request(..): " + str(e))
+          
+          def lambda_handler(event, context):
+              responseData = {}
+              try:
+                  logger.info('got event {}'.format(event))
+          
+                  if event['RequestType'] == 'Create' or event['RequestType'] == 'Update':
+                      if event['ResourceProperties'].get('RoleName') != "None":
+                          role_name = event['ResourceProperties'].get('RoleName')
+          
+                          client = boto3.client('iam')
+          
+                          response = client.get_role(
+                              RoleName=role_name
+                          )
+          
+                          responseData["RoleId"] = response["Role"]["RoleId"]
+                      elif event['ResourceProperties'].get('UserName') != "None":
+                          user_name = event['ResourceProperties'].get('UserName')
+          
+                          client = boto3.client('iam')
+          
+                          response = client.get_user(
+                              UserName=user_name
+                          )
+          
+                          responseData["UserId"] = response["User"]["UserId"]
+              except Exception as e:
+                  logger.error(e)
+          
+              logger.info('responseData {}'.format(responseData))
+              send(event, context, SUCCESS, responseData)
+      FunctionName: !Sub dap-customresource-get-role-id-${Environment}-TEMP-COPY
+      Handler: index.lambda_handler
+      Role: !Sub "arn:aws:iam::${AWS::AccountId}:role/dap-lambda-customresource-get-role-id-${Environment}-role"
+      Runtime: python3.7
+      Timeout: 180
+
+  AdminRoleId:
+    DependsOn: GetIAMRoleIdLambda
+    Type: "Custom::LakeFormationServiceRoleId"
+    Properties:
+      RoleName: !Sub dlg_ci_cdo${Environment}_Admin_Role
+      ServiceToken: !GetAtt GetIAMRoleIdLambda.Arn
+      UserName: None
+
+  TinyTempPipeline:
+    DependsOn: GetIAMRoleIdLambda
+    Type: "AWS::CloudFormation::Stack"
+    Properties:
+      Parameters:
+        ShowMeTheid: !Join
+          - ""
+          - - "Fn::GetAtt": AdminRoleId.RoleId
+            - ""
+      TemplateURL: !Sub "https://s3.amazonaws.com/dlg-dap-cicd-artifacts-eu-west-1-${Environment}/templates_infra/bucket_policies/dlg-dap-temp-tiny-nested-template002.yml"
+
+Outputs:
+  MyPhone:
+    Value: Please call 555-5555
+    Description: A random message for aws cloudformation
+
+#  AdminRoleUseridRoleArn:
+#    Value: !GetAtt AdminRoleId.RoleId
+
+
+        # - "Fn::Join":
+        #      - ""
+        #      - - "Fn::GetAtt": DataEngineerDevOnlyRoleId.RoleId
+        #        - ""
+  #   Export:
+  #     Name: AdminRoleIdYes
+
+  # TinyTempPipeline:
+  #   DependsOn: GetIAMRoleIdLambda
+  #   Type: "AWS::CloudFormation::Stack"
+  #   Properties:
+  #     Parameters:
+  #       ShowMeTheid: !Join
+  #         - ""
+  #         - - "Fn::GetAtt": AdminRoleId.RoleId
+  #           - ""
+  #     TemplateURL: !Sub "https://s3.amazonaws.com/dlg-dap-bootstrap-eu-west-1-${Environment}/templates_infra/bucket_policies/dlg-dap-temp-tiny-nested-template002.yml"
+
