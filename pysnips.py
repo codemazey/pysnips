@@ -84,6 +84,9 @@ if not skip :
   
   print("lambda ", add_two_nums(2,3) )
   
+  my_lambda_fn = lambda z: z * 10
+  print ( my_lambda_fn(2) )
+  
   sqrt_this = 64
   ans = lambda my_sqrt : math.sqrt(my_sqrt)
   print ("lambda II sqr root of 64 is ... ", ans(sqrt_this) )
